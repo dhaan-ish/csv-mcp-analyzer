@@ -25,6 +25,17 @@ from sklearn.decomposition import PCA
 
 from mcp.server.fastmcp import FastMCP
 
+# Gmail API imports
+import base64
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -352,6 +363,145 @@ def clear_datasets() -> str:
         execution_context.pop(key, None)
     
     return f"Cleared {count} dataset(s) from memory."
+
+@mcp.tool()
+def send_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    body_type: str = "plain",
+    cc_emails: Optional[str] = None,
+    bcc_emails: Optional[str] = None,
+    attachments: Optional[List[str]] = None,
+    token_file: str = "token.json"
+) -> str:
+    """
+    Send an email using Gmail API with optional attachments.
+    
+    Args:
+        to_email: Recipient email address (comma-separated for multiple)
+        subject: Email subject line
+        body: Email body content
+        body_type: Type of body content - "plain" or "html" (default: plain)
+        cc_emails: CC recipients (comma-separated)
+        bcc_emails: BCC recipients (comma-separated)
+        attachments: List of file paths to attach
+        token_file: Path to the OAuth token file (default: token.json)
+    
+    Returns:
+        Status message indicating success or failure
+    """
+    try:
+        # Load credentials
+        if not os.path.exists(token_file):
+            return f"Error: Token file '{token_file}' not found. Please run generate_oauth_token.py first."
+        
+        creds = Credentials.from_authorized_user_file(token_file)
+        
+        # Refresh token if expired
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            # Save refreshed token
+            with open(token_file, 'w') as token:
+                token.write(creds.to_json())
+        
+        # Build Gmail service
+        service = build('gmail', 'v1', credentials=creds)
+        
+        # Create message
+        if attachments and len(attachments) > 0:
+            # Create multipart message for attachments
+            message = MIMEMultipart()
+        else:
+            # Simple message without attachments
+            message = MIMEText(body, body_type)
+        
+        # Set headers
+        message['to'] = to_email
+        message['subject'] = subject
+        
+        if cc_emails:
+            message['cc'] = cc_emails
+        
+        if bcc_emails:
+            message['bcc'] = bcc_emails
+        
+        # Add body to multipart message
+        if attachments and len(attachments) > 0:
+            message.attach(MIMEText(body, body_type))
+            
+            # Add attachments
+            for file_path in attachments:
+                if not os.path.exists(file_path):
+                    logger.warning(f"Attachment file not found: {file_path}")
+                    continue
+                
+                # Guess the content type based on the file's extension
+                filename = os.path.basename(file_path)
+                
+                # Open file in binary mode
+                with open(file_path, 'rb') as attachment_file:
+                    # Create MIMEBase instance
+                    part = MIMEBase('application', 'octet-stream')
+                    part.set_payload(attachment_file.read())
+                
+                # Encode file
+                encoders.encode_base64(part)
+                
+                # Add header
+                part.add_header(
+                    'Content-Disposition',
+                    f'attachment; filename= {filename}'
+                )
+                
+                # Attach the part to message
+                message.attach(part)
+        
+        # Create raw message
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+        
+        # Send message
+        try:
+            sent_message = service.users().messages().send(
+                userId='me',
+                body={'raw': raw_message}
+            ).execute()
+            
+            # Get sender email
+            profile = service.users().getProfile(userId='me').execute()
+            sender_email = profile.get('emailAddress', 'your email')
+            
+            result = {
+                "status": "success",
+                "message_id": sent_message['id'],
+                "from": sender_email,
+                "to": to_email,
+                "subject": subject,
+                "attachments_count": len(attachments) if attachments else 0
+            }
+            
+            if cc_emails:
+                result["cc"] = cc_emails
+            
+            if bcc_emails:
+                result["bcc"] = bcc_emails
+            
+            if attachments:
+                result["attachments"] = attachments
+            
+            return f"Email sent successfully!\n{safe_json_dumps(result, indent=2)}"
+            
+        except HttpError as error:
+            return f"Error sending email: {error}"
+            
+    except Exception as e:
+        error_info = {
+            "status": "error",
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "traceback": traceback.format_exc()
+        }
+        return f"Failed to send email:\n{safe_json_dumps(error_info, indent=2)}"
 
 def main():
     """Main entry point for the MCP server."""
