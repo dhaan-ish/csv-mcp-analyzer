@@ -373,7 +373,7 @@ def send_email(
     cc_emails: Optional[str] = None,
     bcc_emails: Optional[str] = None,
     attachments: Optional[List[str]] = None,
-    token_file: str = "token.json"
+    
 ) -> str:
     """
     Send an email using Gmail API with optional attachments.
@@ -386,13 +386,14 @@ def send_email(
         cc_emails: CC recipients (comma-separated)
         bcc_emails: BCC recipients (comma-separated)
         attachments: List of file paths to attach
-        token_file: Path to the OAuth token file (default: token.json)
+        
     
     Returns:
         Status message indicating success or failure
     """
     try:
         # Load credentials
+        token_file: str = "token.json"
         if not os.path.exists(token_file):
             return f"Error: Token file '{token_file}' not found. Please run generate_oauth_token.py first."
         
@@ -506,7 +507,7 @@ def send_email(
 def main():
     """Main entry point for the MCP server."""
     print("SErver started")
-    mcp.run(transport="stdio")
+    mcp.run(transport="sse")
 
 if __name__ == "__main__":
     main() 

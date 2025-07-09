@@ -21,10 +21,20 @@ dependencies = [
     "google-auth-oauthlib>=1.0.0",
     "google-auth-httplib2>=0.1.0",
     "google-api-python-client>=2.100.0",
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
+    "asyncio>=3.4.3",
+    "httpx>=0.25.0",
+    "pydantic-ai>=0.0.15",
+    "rich>=13.0.0",
 ]
 
 [project.scripts]
 mcp-csv-analyzer = "mcp_csv_analyzer.server:main"
+mcp = "scripts.run_mcp:main"
+mcp_server = "scripts.run_server:main"
+mcp_client = "scripts.run_client:run"
+generate_token = "scripts.run_token_generator:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -13,8 +13,10 @@ from pathlib import Path
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+from dotenv import load_dotenv
 
-# Define the required scopes for Gmail API
+load_dotenv()
+
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/gmail.compose',
@@ -36,14 +38,18 @@ def load_credentials_from_file(credentials_file):
 def get_credentials_from_input():
     """Get credentials from user input."""
     print("Enter your OAuth2 credentials:")
-    client_id = input("Client ID: ").strip()
-    client_secret = input("Client Secret: ").strip()
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    
+    if not client_id or not client_secret:
+        print("Error: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in environment variables.")
+        sys.exit(1)
     
     return {
         "installed": {
             "client_id": client_id,
             "client_secret": client_secret,
-            "project_id": "your-project-id",
+            "project_id": "mcp-server-463309",
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
@@ -55,7 +61,6 @@ def generate_token(credentials_data, token_file='token.json'):
     """Generate and save OAuth token."""
     creds = None
     
-    # Check if token already exists
     if os.path.exists(token_file):
         print(f"Token file '{token_file}' already exists.")
         response = input("Do you want to regenerate the token? (y/n): ").strip().lower()
@@ -63,19 +68,16 @@ def generate_token(credentials_data, token_file='token.json'):
             print("Using existing token.")
             return
         else:
-            # Load existing token to refresh if possible
             try:
                 creds = Credentials.from_authorized_user_file(token_file, SCOPES)
             except:
                 pass
     
-    # If there are no (valid) credentials available, let the user log in
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             print("Refreshing expired token...")
             creds.refresh(Request())
         else:
-            # Create a temporary credentials file for the flow
             temp_creds_file = 'temp_credentials.json'
             with open(temp_creds_file, 'w') as f:
                 json.dump(credentials_data, f)
@@ -90,24 +92,20 @@ def generate_token(credentials_data, token_file='token.json'):
                 
                 creds = flow.run_local_server(port=0)
                 
-                # Clean up temporary file
                 os.remove(temp_creds_file)
                 
             except Exception as e:
-                # Clean up temporary file in case of error
                 if os.path.exists(temp_creds_file):
                     os.remove(temp_creds_file)
                 print(f"Error during OAuth flow: {e}")
                 sys.exit(1)
     
-    # Save the credentials for the next run
     with open(token_file, 'w') as token:
         token.write(creds.to_json())
     
     print(f"\nToken successfully saved to '{token_file}'")
     print("You can now use this token for Gmail API access.")
     
-    # Display token info
     token_info = json.loads(creds.to_json())
     print("\nToken information:")
     print(f"- Token type: {token_info.get('token', 'N/A')[:20]}...")
@@ -119,30 +117,9 @@ def main():
     """Main function to handle the token generation process."""
     print("Gmail OAuth Token Generator")
     print("==========================\n")
+    credentials_data = get_credentials_from_input()
     
-    # Check for command line arguments
-    if len(sys.argv) > 1:
-        credentials_file = sys.argv[1]
-        print(f"Loading credentials from '{credentials_file}'...")
-        credentials_data = load_credentials_from_file(credentials_file)
-    else:
-        print("No credentials file specified.")
-        print("You can either:")
-        print("1. Run this script with a credentials file: python generate_oauth_token.py credentials.json")
-        print("2. Enter credentials manually\n")
-        
-        choice = input("Do you have a credentials JSON file? (y/n): ").strip().lower()
-        
-        if choice == 'y':
-            credentials_file = input("Enter the path to your credentials file: ").strip()
-            credentials_data = load_credentials_from_file(credentials_file)
-        else:
-            credentials_data = get_credentials_from_input()
-    
-    # Generate token
-    token_file = input("\nEnter the name for the token file (default: token.json): ").strip()
-    if not token_file:
-        token_file = 'token.json'
+    token_file = 'token.json'
     
     generate_token(credentials_data, token_file)
 
